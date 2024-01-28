@@ -1,0 +1,39 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: pokemons.pokemon.rs
+spec:
+  group: pokemon.rs
+  names:
+    categories: []
+    kind: Pokemon
+    plural: pokemons
+    shortNames: []
+    singular: pokemon
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns: []
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for PokemonSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              health:
+                format: uint16
+                minimum: 0.0
+                type: integer
+              name:
+                type: string
+            required:
+            - health
+            - name
+            type: object
+        required:
+        - spec
+        title: Pokemon
+        type: object
+    served: true
+    storage: true
+    subresources: {}
