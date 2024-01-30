@@ -1,0 +1,7 @@
+apiVersion: pokemon.rs/v1
+kind: Pokemon
+metadata:
+  name: pikachu
+spec:
+  health: 100
+  name: Pikachu

@@ -8,7 +8,8 @@ spec:
     categories: []
     kind: Pokemon
     plural: pokemons
-    shortNames: []
+    shortNames:
+    - poke
     singular: pokemon
   scope: Namespaced
   versions:
@@ -30,10 +31,19 @@ spec:
             - health
             - name
             type: object
+          status:
+            nullable: true
+            properties:
+              alive:
+                type: boolean
+            required:
+            - alive
+            type: object
         required:
         - spec
         title: Pokemon
         type: object
     served: true
     storage: true
-    subresources: {}
+    subresources:
+      status: {}
