@@ -19,6 +19,71 @@ use std::sync::Arc;
 use tokio::{sync::RwLock, time::Duration};
 use tracing::*;
 
+// Context for our reconciler
+#[derive(Clone)]
+pub struct Context {
+    /// Kubernetes client
+    pub client: Client,
+    /// Diagnostics read by the web server
+    pub diagnostics: Arc<RwLock<Diagnostics>>,
+    /// Prometheus metrics
+    pub metrics: Metrics,
+}
+
+/// Diagnostics to be exposed by the web server
+#[derive(Clone, Serialize)]
+pub struct Diagnostics {
+    #[serde(deserialize_with = "from_ts")]
+    pub last_event: DateTime<Utc>,
+    #[serde(skip)]
+    pub reporter: Reporter,
+}
+
+impl Default for Diagnostics {
+    fn default() -> Self {
+        Self {
+            last_event: Utc::now(),
+            reporter: "doc-controller".into(),
+        }
+    }
+}
+impl Diagnostics {
+    fn recorder(&self, client: Client, pokemon: &Pokemon) -> Recorder {
+        Recorder::new(client, self.reporter.clone(), pokemon.object_ref(&()))
+    }
+}
+
+/// State shared between the controller and the web server
+#[derive(Clone, Default)]
+pub struct AppState {
+    /// Diagnostics populated by the reconciler
+    diagnostics: Arc<RwLock<Diagnostics>>,
+    /// Metrics registry
+    registry: prometheus::Registry,
+}
+
+/// State wrapper around the controller outputs for the web server
+impl AppState {
+    /// Metrics getter
+    pub fn metrics(&self) -> Vec<prometheus::proto::MetricFamily> {
+        self.registry.gather()
+    }
+
+    /// State getter
+    pub async fn diagnostics(&self) -> Diagnostics {
+        self.diagnostics.read().await.clone()
+    }
+
+    // Create a Controller Context that can update State
+    pub fn to_context(&self, client: Client) -> Arc<Context> {
+        Arc::new(Context {
+            client,
+            metrics: Metrics::default().register(&self.registry).unwrap(),
+            diagnostics: self.diagnostics.clone(),
+        })
+    }
+}
+
 pub static POKEMON_FINALIZER: &str = "pokemon.pokemon.rs";
 
 #[derive(CustomResource, Debug, Serialize, Deserialize, Default, Clone, JsonSchema)]
@@ -38,41 +103,6 @@ impl Pokemon {
     fn is_alive(&self) -> bool {
         self.status.as_ref().map(|s| s.alive).unwrap_or_default()
     }
-}
-
-// Context for our reconciler
-#[derive(Clone)]
-pub struct Context {
-    /// Kubernetes client
-    pub client: Client,
-    /// Diagnostics read by the web server
-    pub diagnostics: Arc<RwLock<Diagnostics>>,
-    /// Prometheus metrics
-    pub metrics: Metrics,
-}
-
-#[instrument(skip(ctx, pokemon), fields(trace_id))]
-async fn reconcile(pokemon: Arc<Pokemon>, ctx: Arc<Context>) -> Result<Action> {
-    let trace_id = telemetry::get_trace_id();
-    Span::current().record("trace_id", &field::display(&trace_id));
-    let _timer = ctx.metrics.count_and_measure();
-    let ns = pokemon.namespace().unwrap(); // doc is namespace scoped
-    let pokemons: Api<Pokemon> = Api::namespaced(ctx.client.clone(), &ns);
-
-    info!("Reconciling Pokemon \"{}\" in {}", pokemon.name_any(), ns);
-    finalizer(&pokemons, POKEMON_FINALIZER, pokemon, |event| async {
-        match event {
-            Finalizer::Apply(pokemon) => pokemon.reconcile(ctx.clone()).await,
-            Finalizer::Cleanup(pokemon) => pokemon.cleanup(ctx.clone()).await,
-        }
-    })
-    .await
-    .map_err(|e| Error::FinalizerError(Box::new(e)))
-}
-fn error_policy(pokemon: Arc<Pokemon>, error: &Error, ctx: Arc<Context>) -> Action {
-    warn!("reconcile failed: {:?}", error);
-    ctx.metrics.reconcile_failure(&pokemon, error);
-    Action::requeue(Duration::from_secs(5 * 60))
 }
 
 impl Pokemon {
@@ -141,61 +171,32 @@ impl Pokemon {
     }
 }
 
-/// Diagnostics to be exposed by the web server
-#[derive(Clone, Serialize)]
-pub struct Diagnostics {
-    #[serde(deserialize_with = "from_ts")]
-    pub last_event: DateTime<Utc>,
-    #[serde(skip)]
-    pub reporter: Reporter,
-}
-impl Default for Diagnostics {
-    fn default() -> Self {
-        Self {
-            last_event: Utc::now(),
-            reporter: "doc-controller".into(),
+#[instrument(skip(ctx, pokemon), fields(trace_id))]
+async fn reconcile(pokemon: Arc<Pokemon>, ctx: Arc<Context>) -> Result<Action> {
+    let trace_id = telemetry::get_trace_id();
+    Span::current().record("trace_id", &field::display(&trace_id));
+    let _timer = ctx.metrics.count_and_measure();
+    let ns = pokemon.namespace().unwrap(); // doc is namespace scoped
+    let pokemons: Api<Pokemon> = Api::namespaced(ctx.client.clone(), &ns);
+
+    info!("Reconciling Pokemon \"{}\" in {}", pokemon.name_any(), ns);
+    finalizer(&pokemons, POKEMON_FINALIZER, pokemon, |event| async {
+        match event {
+            Finalizer::Apply(pokemon) => pokemon.reconcile(ctx.clone()).await,
+            Finalizer::Cleanup(pokemon) => pokemon.cleanup(ctx.clone()).await,
         }
-    }
+    })
+    .await
+    .map_err(|e| Error::FinalizerError(Box::new(e)))
 }
-impl Diagnostics {
-    fn recorder(&self, client: Client, pokemon: &Pokemon) -> Recorder {
-        Recorder::new(client, self.reporter.clone(), pokemon.object_ref(&()))
-    }
-}
-
-/// State shared between the controller and the web server
-#[derive(Clone, Default)]
-pub struct State {
-    /// Diagnostics populated by the reconciler
-    diagnostics: Arc<RwLock<Diagnostics>>,
-    /// Metrics registry
-    registry: prometheus::Registry,
-}
-
-/// State wrapper around the controller outputs for the web server
-impl State {
-    /// Metrics getter
-    pub fn metrics(&self) -> Vec<prometheus::proto::MetricFamily> {
-        self.registry.gather()
-    }
-
-    /// State getter
-    pub async fn diagnostics(&self) -> Diagnostics {
-        self.diagnostics.read().await.clone()
-    }
-
-    // Create a Controller Context that can update State
-    pub fn to_context(&self, client: Client) -> Arc<Context> {
-        Arc::new(Context {
-            client,
-            metrics: Metrics::default().register(&self.registry).unwrap(),
-            diagnostics: self.diagnostics.clone(),
-        })
-    }
+fn error_policy(pokemon: Arc<Pokemon>, error: &Error, ctx: Arc<Context>) -> Action {
+    warn!("reconcile failed: {:?}", error);
+    ctx.metrics.reconcile_failure(&pokemon, error);
+    Action::requeue(Duration::from_secs(5 * 60))
 }
 
 /// Initialize the controller and shared state (given the crd is installed)
-pub async fn run(state: State) {
+pub async fn run(state: AppState) {
     let client = Client::try_default()
         .await
         .expect("failed to create kube Client");
