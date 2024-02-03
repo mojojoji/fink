@@ -16,20 +16,3 @@ pub enum Error {
     #[error("IllegalDocument")]
     IllegalDocument,
 }
-pub type Result<T, E = Error> = std::result::Result<T, E>;
-
-impl Error {
-    pub fn metric_label(&self) -> String {
-        format!("{self:?}").to_lowercase()
-    }
-}
-/// Expose all controller components used by main
-pub mod controller;
-pub use crate::controller::*;
-
-/// Log and trace integrations
-pub mod telemetry;
-
-/// Metrics
-mod metrics;
-pub use metrics::Metrics;

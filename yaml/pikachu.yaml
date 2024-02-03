@@ -3,5 +3,5 @@ kind: Pokemon
 metadata:
   name: pikachu
 spec:
-  health: 100
+  health: 0
   name: Pikachu
