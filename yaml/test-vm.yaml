@@ -1,0 +1,7 @@
+apiVersion: codesandbox.io/v1alpha1
+kind: VirtualMachine
+metadata:
+  name: test-vm
+spec:
+  image: nginx
+  state: STOPPED

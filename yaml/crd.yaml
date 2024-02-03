@@ -1,47 +1,56 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: pokemons.pokemon.rs
+  name: virtualmachines.codesandbox.io
 spec:
-  group: pokemon.rs
+  group: codesandbox.io
   names:
     categories: []
-    kind: Pokemon
-    plural: pokemons
+    kind: VirtualMachine
+    plural: virtualmachines
     shortNames:
     - poke
-    singular: pokemon
+    singular: virtualmachine
   scope: Namespaced
   versions:
   - additionalPrinterColumns: []
-    name: v1
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Auto-generated derived type for PokemonSpec via `CustomResource`
+        description: Auto-generated derived type for VirtualMachineSpec via `CustomResource`
         properties:
           spec:
             properties:
-              health:
-                format: uint16
-                minimum: 0.0
-                type: integer
-              name:
+              image:
+                type: string
+              state:
+                enum:
+                - STOPPED
+                - STARTED
+                - HIBERNATED
                 type: string
             required:
-            - health
-            - name
+            - image
+            - state
             type: object
           status:
             nullable: true
             properties:
-              alive:
-                type: boolean
+              state:
+                enum:
+                - STOPPED
+                - STOPPING
+                - STARTED
+                - STARTING
+                - HIBERNATING
+                - HIBERNATED
+                type: string
             required:
-            - alive
+            - state
             type: object
         required:
         - spec
-        title: Pokemon
+        title: VirtualMachine
         type: object
     served: true
     storage: true

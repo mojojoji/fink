@@ -8,6 +8,6 @@ use kube::CustomResourceExt;
 fn main() {
     print!(
         "{}",
-        serde_yaml::to_string(&controller::pokemon::Pokemon::crd()).unwrap()
+        serde_yaml::to_string(&controller::virtualmachine::VirtualMachine::crd()).unwrap()
     )
 }
