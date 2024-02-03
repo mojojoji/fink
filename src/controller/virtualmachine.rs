@@ -155,23 +155,23 @@ impl VirtualMachine {
             ..Service::default()
         };
 
+        let services: Api<Service> = Api::namespaced(client.clone(), &ns);
+        let existing_service = services.get(vm_name).await;
+        if let Err(kube::Error::Api(ErrorResponse { code, .. })) = existing_service {
+            if code == 404 {
+                let _o = services
+                    .create(&PostParams::default(), &service)
+                    .await
+                    .map_err(Error::KubeError)?;
+            }
+        }
+
         let pods: Api<Pod> = Api::namespaced(client.clone(), &ns);
         let existing_pod = pods.get(vm_name).await;
         if let Err(kube::Error::Api(ErrorResponse { code, .. })) = existing_pod {
             if code == 404 {
                 let _o = pods
                     .create(&PostParams::default(), &pod)
-                    .await
-                    .map_err(Error::KubeError)?;
-            }
-        }
-
-        let services: Api<Service> = Api::namespaced(client, &ns);
-        let existing_service = services.get(vm_name).await;
-        if let Err(kube::Error::Api(ErrorResponse { code, .. })) = existing_service {
-            if code == 404 {
-                let _o = services
-                    .create(&PostParams::default(), &service)
                     .await
                     .map_err(Error::KubeError)?;
             }
