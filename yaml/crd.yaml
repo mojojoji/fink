@@ -9,15 +9,19 @@ spec:
     kind: VirtualMachine
     plural: virtualmachines
     shortNames:
-    - poke
+    - vm
     singular: virtualmachine
   scope: Namespaced
   versions:
-  - additionalPrinterColumns: []
+  - additionalPrinterColumns:
+    - description: VM rootfs image
+      jsonPath: .spec.image
+      name: Image
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Auto-generated derived type for VirtualMachineSpec via `CustomResource`
+        description: A VirtualMachine resource for FinK
         properties:
           spec:
             properties:
